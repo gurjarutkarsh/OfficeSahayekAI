@@ -1,0 +1,330 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600&family=Playfair+Display:wght@700&display=swap');
+
+/* ── EditDoc Shell ───────────────────────────────────── */
+.editdoc-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #F4F6FB;
+  font-family: 'Noto Sans', sans-serif;
+}
+
+.editdoc-header {
+  background: #1B2E4E;
+  border-bottom: 3px solid #E07B39;
+  padding: 1.1rem 1.5rem;
+}
+
+.editdoc-header-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.editdoc-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.logo-badge {
+  width: 44px;
+  height: 44px;
+  background: #E07B39;
+  color: #fff;
+  font-family: 'Playfair Display', serif;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.logo-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.35rem;
+  color: #fff;
+  line-height: 1.1;
+}
+
+.logo-sub {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.back-btn {
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.85);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+.back-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+.editdoc-main {
+  flex: 1;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ── Tool Tabs ───────────────────────────────────────── */
+.tool-tabs {
+  display: flex;
+  background: #fff;
+  border: 1px solid #DDE3EE;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(27,46,78,0.07);
+}
+
+.tool-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.8rem 0.5rem;
+  background: none;
+  border: none;
+  border-right: 1px solid #DDE3EE;
+  cursor: pointer;
+  font-family: 'Noto Sans', sans-serif;
+  transition: background 0.15s;
+}
+.tool-tab:last-child { border-right: none; }
+.tool-tab-emoji { font-size: 1.3rem; line-height: 1; }
+.tool-tab-label { font-size: 0.72rem; font-weight: 500; color: #4A5568; }
+.tool-tab:hover { background: #F4F6FB; }
+.tool-tab.active { background: #1B2E4E; }
+.tool-tab.active .tool-tab-label { color: #fff; }
+
+/* ── Tool Panel ──────────────────────────────────────── */
+.tool-panel {
+  background: #fff;
+  border: 1px solid #DDE3EE;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 1px 4px rgba(27,46,78,0.07);
+  min-height: 400px;
+}
+
+/* ── Shared Tool Styles ──────────────────────────────── */
+.tool-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.3rem;
+  color: #1B2E4E;
+  margin-bottom: 0.4rem;
+}
+
+.tool-subtitle {
+  font-size: 0.88rem;
+  color: #718096;
+  margin-bottom: 1.75rem;
+}
+
+.tool-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.tool-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.field-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #2D4A70;
+}
+
+.field-input {
+  padding: 0.6rem 0.85rem;
+  border: 1px solid #DDE3EE;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: 'Noto Sans', sans-serif;
+  color: #1A1A2E;
+  background: #F4F6FB;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+.field-input:focus { border-color: #E07B39; background: #fff; }
+
+.field-textarea {
+  padding: 0.6rem 0.85rem;
+  border: 1px solid #DDE3EE;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: 'Noto Sans', sans-serif;
+  color: #1A1A2E;
+  background: #F4F6FB;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+  resize: vertical;
+  min-height: 80px;
+}
+.field-textarea:focus { border-color: #E07B39; background: #fff; }
+
+/* ── Upload Zone ─────────────────────────────────────── */
+.upload-zone {
+  border: 2px dashed #DDE3EE;
+  border-radius: 10px;
+  padding: 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  background: #F4F6FB;
+}
+.upload-zone:hover { border-color: #E07B39; background: #FDF0E6; }
+.upload-zone input { display: none; }
+.upload-zone-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+.upload-zone-text { font-size: 0.88rem; color: #4A5568; }
+.upload-zone-hint { font-size: 0.78rem; color: #718096; margin-top: 0.25rem; }
+.upload-zone.has-file { border-color: #2D4A70; border-style: solid; background: #EDF1F7; }
+.upload-zone-filename { font-size: 0.88rem; font-weight: 600; color: #1B2E4E; }
+
+/* ── Buttons ─────────────────────────────────────────── */
+.btn-primary {
+  background: #E07B39;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 0.7rem 1.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: 'Noto Sans', sans-serif;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.btn-primary:hover:not(:disabled) { background: #B85E22; transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.btn-secondary {
+  background: #EDF1F7;
+  color: #1B2E4E;
+  border: 1px solid #DDE3EE;
+  border-radius: 10px;
+  padding: 0.7rem 1.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: 'Noto Sans', sans-serif;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.btn-secondary:hover { background: #1B2E4E; color: #fff; }
+
+.btn-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+/* ── Status / Error ──────────────────────────────────── */
+.tool-error {
+  background: #FDECEA;
+  border: 1px solid #F5B7B1;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.88rem;
+  color: #C0392B;
+  margin-top: 0.75rem;
+}
+
+.tool-success {
+  background: #D8EFE5;
+  border: 1px solid #A8D5C2;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.88rem;
+  color: #2D6A4F;
+  margin-top: 0.75rem;
+}
+
+.tool-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #4A5568;
+  font-size: 0.9rem;
+  margin-top: 0.75rem;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #DDE3EE;
+  border-top-color: #E07B39;
+  border-radius: 50%;
+  animation: toolSpin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ── Coming placeholder ──────────────────────────────── */
+.tool-coming {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 0.75rem;
+  color: #718096;
+}
+.tool-coming-emoji { font-size: 3rem; }
+.tool-coming h2 { font-size: 1.1rem; color: #1B2E4E; }
+
+/* ── Footer ──────────────────────────────────────────── */
+.editdoc-footer {
+  text-align: center;
+  padding: 1.25rem;
+  font-size: 0.78rem;
+  color: #718096;
+  border-top: 1px solid #DDE3EE;
+}
+
+/* ── Animations ──────────────────────────────────────── */
+@keyframes toolSpin { to { transform: rotate(360deg); } }
+
+/* ── Responsive ──────────────────────────────────────── */
+@media (max-width: 600px) {
+  .tool-row { grid-template-columns: 1fr; }
+  .tool-panel { padding: 1.25rem; }
+  .tool-tab-label { display: none; }
+  .tool-tab-emoji { font-size: 1.5rem; }
+  .editdoc-header-inner { flex-direction: column; align-items: flex-start; }
+}
