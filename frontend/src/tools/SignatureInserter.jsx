@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ImageLibrary from "./Imagelibrary.jsx";
 
 export default function SignatureInserter() {
   const [pdfFile, setPdfFile] = useState(null);
@@ -99,7 +100,7 @@ export default function SignatureInserter() {
     const pdfPage = await pdf.getPage(pageNum);
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const viewport = pdfPage.getViewport({ scale: 1.8 });
+    const viewport = pdfPage.getViewport({ scale: 1.3 });
     canvas.width  = viewport.width;
     canvas.height = viewport.height;
     const ctx = canvas.getContext("2d");
@@ -173,7 +174,7 @@ export default function SignatureInserter() {
   return (
     <div>
       <h2 className="tool-title">✍️ Signature Inserter</h2>
-      <p className="tool-subtitle">Upload a PDF and your signature or seal image. Edit, position, and download.</p>
+      <p className="tool-subtitle">Upload a PDF and your signature. Edit, position, and download.</p>
 
       <div className="tool-row" style={{ marginBottom: "1.25rem" }}>
         <div className="field-group">
@@ -194,6 +195,13 @@ export default function SignatureInserter() {
               ? <><img src={sigPreview} alt="sig" style={{ maxHeight: 56, maxWidth: "100%", objectFit: "contain" }} /><div className="upload-zone-hint" style={{ marginTop: 6 }}>Click to change</div></>
               : <><div className="upload-zone-icon">✍️</div><div className="upload-zone-text">Click to upload signature</div><div className="upload-zone-hint">PNG recommended</div></>}
           </label>
+          <ImageLibrary type="signature" label="Signature"
+            onSelect={(url, name) => {
+              setSigPreview(url);
+              const img = new Image();
+              img.onload = () => { sigImgRef.current = img; processSignature(img, removeBg, bgThreshold); };
+              img.src = url;
+            }} />
         </div>
       </div>
 
@@ -299,8 +307,8 @@ export default function SignatureInserter() {
             {sigPreview && <span style={{ fontSize: "0.78rem", color: "#718096" }}>💡 Drag signature to reposition</span>}
           </div>
 
-           <div style={{ border: "1px solid #DDE3EE", borderRadius: 8, overflow: "auto", width: "100%", cursor: dragging ? "grabbing" : sigPreview ? "grab" : "default" }}>
-            <canvas ref={canvasRef} style={{ display: "block", width: "auto" }}
+          <div style={{ border: "1px solid #DDE3EE", borderRadius: 8, overflow: "auto", maxHeight: 560, cursor: dragging ? "grabbing" : sigPreview ? "grab" : "default" }}>
+            <canvas ref={canvasRef} style={{ display: "block", maxWidth: "100%" }}
               onMouseDown={onMouseDown} onMouseMove={onMouseMove}
               onMouseUp={onMouseUp} onMouseLeave={onMouseUp} />
           </div>

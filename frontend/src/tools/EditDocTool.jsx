@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import ImageLibrary from "./Imagelibrary.jsx";
 import axios from "axios";
 
 const API = "http://127.0.0.1:8000";
@@ -20,14 +21,14 @@ export default function EditDocTool() {
   const imgRef = useRef(null);
   const editorRefs = useRef({});
   const boxHtml = useRef({});
-  const activeIdRef = useRef(null);  // persists across blur
   const nextId = useRef(1);
+  // Ref that always reflects latest activeId — never goes stale
+  const activeIdRef = useRef(null);
 
-  // Always update both state and ref together
-  const setActive = (id) => {
+  const setActive = useCallback((id) => {
     activeIdRef.current = id;
     setActiveId(id);
-  };
+  }, []);
 
   const handleFile = async (e) => {
     const f = e.target.files[0];
@@ -85,15 +86,15 @@ export default function EditDocTool() {
     delete editorRefs.current[id]; delete boxHtml.current[id];
     setTextBoxes(prev => ({ ...prev, [currentPage]: (prev[currentPage]||[]).filter(b => b.id!==id) }));
     setBoxStyles(prev => { const n={...prev}; delete n[id]; return n; });
-    setActive(null);
+    activeIdRef.current = null; setActiveId(null);
   };
 
-  // Uses ref so it works even after blur
-  const updateStyle = (key, value) => {
+  // updateStyle reads from ref — works even after blur fires
+  const updateStyle = useCallback((key, value) => {
     const id = activeIdRef.current;
     if (!id) return;
     setBoxStyles(prev => ({ ...prev, [id]: { ...(prev[id]||{}), [key]: value } }));
-  };
+  }, []);
 
   const pctToPx = (box) => {
     const { w, h } = getImgSize();
@@ -122,16 +123,18 @@ export default function EditDocTool() {
   const onMouseMove = useCallback((e) => {
     const rect = imgRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const { w, h } = { w: rect.width, h: rect.height };
+    const w = rect.width, h = rect.height;
     if (dragState) {
-      const xPx = Math.max(0, e.clientX-rect.left-dragState.ox);
-      const yPx = Math.max(0, e.clientY-rect.top-dragState.oy);
-      updateBoxPos(dragState.id, (xPx/w)*100, (yPx/h)*100);
+      updateBoxPos(dragState.id,
+        Math.max(0, (e.clientX-rect.left-dragState.ox)/w*100),
+        Math.max(0, (e.clientY-rect.top-dragState.oy)/h*100)
+      );
     }
     if (resizeState) {
-      const nw = Math.max(80, resizeState.sw + e.clientX - resizeState.sx);
-      const nh = Math.max(30, resizeState.sh + e.clientY - resizeState.sy);
-      updateBoxSize(resizeState.id, (nw/w)*100, (nh/h)*100);
+      updateBoxSize(resizeState.id,
+        Math.max(80, resizeState.sw + e.clientX - resizeState.sx)/w*100,
+        Math.max(30, resizeState.sh + e.clientY - resizeState.sy)/h*100
+      );
     }
   }, [dragState, resizeState]);
 
@@ -140,47 +143,52 @@ export default function EditDocTool() {
   const handleDownload = () => {
     const imgEl = imgRef.current;
     if (!imgEl) return;
-    const rw = imgEl.getBoundingClientRect().width;
-    const nw = imgEl.naturalWidth;
-    const nh = imgEl.naturalHeight;
-    const scale = nw / rw;
+
+    // Use the RENDERED size — same as what user sees on screen
+    const rw = imgEl.clientWidth;
+    const rh = imgEl.clientHeight;
 
     const pagesHtml = pages.map((pageUrl, pi) => {
       const boxes = textBoxes[pi] || [];
       const boxesHtml = boxes.map(b => {
         const html = editorRefs.current[b.id]?.innerHTML || boxHtml.current[b.id] || "";
         const st = boxStyles[b.id] || {};
-        const x = Math.round((b.xPct/100)*nw);
-        const y = Math.round((b.yPct/100)*nh);
-        const bw = Math.round((b.wPct/100)*nw);
-        const bh = Math.round((b.hPct/100)*nh);
-        const fs = Math.round((st.fontSize||14) * scale);
+        // Convert percentages back using the same rendered size
+        const x  = Math.round((b.xPct/100) * rw);
+        const y  = Math.round((b.yPct/100) * rh);
+        const bw = Math.round((b.wPct/100) * rw);
+        const bh = Math.round((b.hPct/100) * rh);
         return `<div style="position:absolute;left:${x}px;top:${y}px;width:${bw}px;min-height:${bh}px;
-          font-size:${fs}px;font-family:${st.fontFamily||"Arial"},sans-serif;
+          font-size:${st.fontSize||14}px;font-family:${st.fontFamily||"Arial"},sans-serif;
           font-weight:${st.bold?"bold":"normal"};font-style:${st.italic?"italic":"normal"};
           text-decoration:${st.underline?"underline":"none"};text-align:${st.align||"left"};
           color:${st.color||"#1A1A2E"};line-height:1.6;">${html}</div>`;
       }).join("");
-      return `<div style="position:relative;width:${nw}px;min-height:${nh}px;page-break-after:always;background:#fff;">
-        <img src="${pageUrl}" style="display:block;width:${nw}px;height:auto;"/>
-        <div style="position:absolute;top:0;left:0;width:${nw}px;height:${nh}px;">${boxesHtml}</div>
+      return `<div style="position:relative;width:${rw}px;height:${rh}px;page-break-after:always;background:#fff;">
+        <img src="${pageUrl}" style="display:block;width:${rw}px;height:${rh}px;object-fit:fill;"/>
+        <div style="position:absolute;top:0;left:0;width:${rw}px;height:${rh}px;">${boxesHtml}</div>
       </div>`;
     }).join("");
 
     const w = window.open("", "_blank");
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${filename}</title>
-      <style>*{margin:0;padding:0;box-sizing:border-box;}
-      @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-      @page{size:A4;margin:0;}}</style>
+      <style>
+        *{margin:0;padding:0;box-sizing:border-box;}
+        @media print{
+          body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+          @page{size:${rw}px ${rh}px;margin:0;}
+        }
+      </style>
       </head><body>${pagesHtml}
       <script>window.onload=()=>window.print()<\/script></body></html>`);
     w.document.close();
   };
 
   const boxes = getBoxes();
-  const activeStyle = boxStyles[activeId] || {};
-  const bs = { padding:"0.28rem 0.55rem", borderRadius:4, fontSize:"0.8rem", fontWeight:600, border:"1px solid #DDE3EE", cursor:"pointer", background:"#fff", color:"#1B2E4E" };
-  const bsOn = (on) => ({ ...bs, background: on?"#1B2E4E":"#fff", color: on?"#fff":"#1B2E4E" });
+  // Read activeStyle directly from state for toolbar rendering
+  const activeStyle = activeId ? (boxStyles[activeId] || {}) : {};
+  const bs  = { padding:"0.28rem 0.55rem", borderRadius:4, fontSize:"0.8rem", fontWeight:600, border:"1px solid #DDE3EE", cursor:"pointer", background:"#fff", color:"#1B2E4E" };
+  const bsOn = (on) => ({ ...bs, background:on?"#1B2E4E":"#fff", color:on?"#fff":"#1B2E4E" });
 
   return (
     <div>
@@ -195,6 +203,13 @@ export default function EditDocTool() {
             ? <><div className="upload-zone-icon">📄</div><div className="upload-zone-filename">{filename}</div><div className="upload-zone-hint">Click to change</div></>
             : <><div className="upload-zone-icon">📄</div><div className="upload-zone-text">Click to upload PDF, JPG, or PNG</div><div className="upload-zone-hint">Each PDF page shown separately</div></>}
         </label>
+        <ImageLibrary type="letterhead" label="Letterhead"
+          onSelect={(url) => {
+            setPages([url]);
+            setCurrentPage(0);
+            setTextBoxes({});
+            setFilename("Saved Letterhead");
+          }} />
       </div>
 
       {loading && <div className="tool-loading"><div className="spinner"/>Loading document…</div>}
@@ -213,31 +228,34 @@ export default function EditDocTool() {
           <span style={{ fontSize:"0.72rem", color:"#718096" }}>Drag border to move · Orange corner to resize</span>
         </div>
 
-        {/* Toolbar */}
+        {/* Toolbar — all buttons use onMouseDown preventDefault + onClick updateStyle */}
         <div style={{ display:"flex", flexWrap:"wrap", gap:"0.3rem", padding:"0.5rem 0.6rem",
           background:"#F4F6FB", border:"1px solid #DDE3EE", borderRadius:"8px 8px 0 0",
           opacity: activeId ? 1 : 0.45 }}>
 
           <button style={bsOn(activeStyle.bold)}
-            onMouseDown={e=>e.preventDefault()} onClick={()=>updateStyle("bold",!activeStyle.bold)}><b>B</b></button>
+            onMouseDown={e=>{ e.preventDefault(); const el=editorRefs.current[activeIdRef.current]; if(el){el.focus();document.execCommand("bold",false,null);} }}
+            onClick={()=>updateStyle("bold", !activeStyle.bold)}><b>B</b></button>
+
           <button style={bsOn(activeStyle.italic)}
-            onMouseDown={e=>e.preventDefault()} onClick={()=>updateStyle("italic",!activeStyle.italic)}><i>I</i></button>
+            onMouseDown={e=>{ e.preventDefault(); const el=editorRefs.current[activeIdRef.current]; if(el){el.focus();document.execCommand("italic",false,null);} }}
+            onClick={()=>updateStyle("italic", !activeStyle.italic)}><i>I</i></button>
+
           <button style={bsOn(activeStyle.underline)}
-            onMouseDown={e=>e.preventDefault()} onClick={()=>updateStyle("underline",!activeStyle.underline)}><u>U</u></button>
+            onMouseDown={e=>{ e.preventDefault(); const el=editorRefs.current[activeIdRef.current]; if(el){el.focus();document.execCommand("underline",false,null);} }}
+            onClick={()=>updateStyle("underline", !activeStyle.underline)}><u>U</u></button>
 
           <div style={{width:1,background:"#DDE3EE",margin:"0 0.15rem"}}/>
 
           <select style={{...bs,padding:"0.2rem 0.35rem"}}
             value={activeStyle.fontSize||14}
-            onMouseDown={e=>e.preventDefault()}
-            onChange={e=>updateStyle("fontSize",+e.target.value)}>
+            onChange={e=>updateStyle("fontSize", +e.target.value)}>
             {FONT_SIZES.map(s=><option key={s} value={s}>{s}px</option>)}
           </select>
 
           <select style={{...bs,padding:"0.2rem 0.35rem"}}
             value={activeStyle.fontFamily||"Arial"}
-            onMouseDown={e=>e.preventDefault()}
-            onChange={e=>updateStyle("fontFamily",e.target.value)}>
+            onChange={e=>updateStyle("fontFamily", e.target.value)}>
             {FONTS.map(f=><option key={f} value={f}>{f}</option>)}
           </select>
 
@@ -245,34 +263,39 @@ export default function EditDocTool() {
 
           {[["left","⬅"],["center","☰"],["right","➡"]].map(([a,l])=>(
             <button key={a} style={bsOn(activeStyle.align===a)}
-              onMouseDown={e=>e.preventDefault()} onClick={()=>updateStyle("align",a)}>{l}</button>
+              onMouseDown={e=>e.preventDefault()}
+              onClick={()=>updateStyle("align", a)}>{l}</button>
           ))}
 
           <div style={{width:1,background:"#DDE3EE",margin:"0 0.15rem"}}/>
 
           <label style={{display:"flex",alignItems:"center",gap:3,fontSize:"0.75rem",color:"#4A5568",cursor:"pointer"}}
             onMouseDown={e=>e.preventDefault()}>
-            A<input type="color" value={activeStyle.color||"#1A1A2E"}
-              onChange={e=>updateStyle("color",e.target.value)}
+            A<input type="color"
+              value={activeStyle.color||"#1A1A2E"}
+              onChange={e=>updateStyle("color", e.target.value)}
               style={{width:20,height:20,border:"none",cursor:"pointer",padding:0}}/>
           </label>
 
           {activeId ? (
             <div style={{display:"flex",gap:"0.4rem",marginLeft:"auto"}}>
-              <button style={{...bs,background:"#EDF1F7",color:"#4A5568"}}
-                onMouseDown={e=>e.preventDefault()} onClick={()=>setActive(null)}>✕ Deselect</button>
+              <button style={{...bs}}
+                onMouseDown={e=>e.preventDefault()}
+                onClick={()=>setActive(null)}>✕ Deselect</button>
               <button style={{...bs,background:"#FDECEA",border:"1px solid #F5B7B1",color:"#C0392B"}}
-                onMouseDown={e=>e.preventDefault()} onClick={()=>deleteBox(activeId)}>🗑 Delete</button>
+                onMouseDown={e=>e.preventDefault()}
+                onClick={()=>deleteBox(activeId)}>🗑 Delete</button>
             </div>
           ) : (
-            <span style={{marginLeft:"auto",fontSize:"0.7rem",color:"#718096",alignSelf:"center"}}>Click a box to edit</span>
+            <span style={{marginLeft:"auto",fontSize:"0.7rem",color:"#718096",alignSelf:"center"}}>
+              Click a box to activate toolbar
+            </span>
           )}
         </div>
 
         {/* Canvas */}
         <div ref={containerRef}
           onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
-          onClick={()=>{}}
           style={{ position:"relative", border:"1px solid #DDE3EE", borderTop:"none",
             borderRadius:"0 0 8px 8px", background:"#fff", overflow:"hidden",
             marginBottom:"1rem", userSelect:(dragState||resizeState)?"none":"auto" }}>
@@ -281,14 +304,15 @@ export default function EditDocTool() {
             style={{display:"block",width:"100%",height:"auto"}}/>
 
           {boxes.map(box => {
-            const st = boxStyles[box.id] || {};
-            const px = pctToPx(box);
+            const st  = boxStyles[box.id] || {};
+            const px  = pctToPx(box);
+            const isActive = activeId === box.id;
             return (
               <div key={box.id}
                 onMouseDown={e=>onBoxMouseDown(e,box.id)}
-                onClick={e=>e.stopPropagation()}
+                onClick={e=>{ e.stopPropagation(); setActive(box.id); }}
                 style={{ position:"absolute", left:px.x, top:px.y, width:px.w, minHeight:px.h,
-                  border: activeId===box.id ? "2px solid #E07B39":"2px dashed #aaa",
+                  border: isActive ? "2px solid #E07B39":"2px dashed #aaa",
                   borderRadius:3, zIndex:10,
                   cursor: dragState?.id===box.id?"grabbing":"grab",
                   boxSizing:"border-box" }}>
@@ -297,16 +321,17 @@ export default function EditDocTool() {
                   contentEditable suppressContentEditableWarning
                   onMouseDown={e=>e.stopPropagation()}
                   onFocus={()=>setActive(box.id)}
-                  onBlur={()=>{}}
                   onInput={e=>{ boxHtml.current[box.id]=e.currentTarget.innerHTML; }}
                   style={{ width:"100%", minHeight:px.h-4, padding:"4px 6px",
                     outline:"none", cursor:"text", background:"transparent",
-                    fontSize: st.fontSize||14, fontFamily: st.fontFamily||"Arial",
+                    fontSize: st.fontSize||14,
+                    fontFamily: `${st.fontFamily||"Arial"},sans-serif`,
                     fontWeight: st.bold?"bold":"normal",
                     fontStyle: st.italic?"italic":"normal",
                     textDecoration: st.underline?"underline":"none",
                     textAlign: st.align||"left",
-                    color: st.color||"#1A1A2E", lineHeight:1.6 }}/>
+                    color: st.color||"#1A1A2E",
+                    lineHeight: 1.6 }}/>
                 <div data-nd="true" onMouseDown={e=>onResizeMouseDown(e,box.id)}
                   style={{position:"absolute",bottom:0,right:0,width:14,height:14,
                     background:"#E07B39",borderRadius:"3px 0 3px 0",cursor:"se-resize",zIndex:20}}/>

@@ -30,17 +30,25 @@ def analyze_document(extracted_text):
     }
 
 
-def ask_document(question, extracted_text):
-    prompt = f"""
-    You are an AI assistant. Answer the user's question based ONLY on the document below.
-    If the answer is not in the document, say "I could not find this information in the document."
-    Be clear and simple. Answer in 2-4 sentences.
+def ask_document(question, extracted_text, hindi=False, history=[]):
+    lang = "Hindi (Devanagari script)" if hindi else "English"
 
-    Document:
-    {extracted_text}
+    # Build conversation history string
+    history_text = ""
+    for msg in history:
+        history_text += f"User: {msg['question']}\nAssistant: {msg['answer']}\n\n"
 
-    Question: {question}
-    """
+    prompt = f"""You are a helpful assistant. Answer based ONLY on the document below.
+If the answer is not in the document, say "I could not find this information in the document."
+Answer in 2-4 sentences in {lang}.
+
+Document:
+{extracted_text}
+
+Previous conversation:
+{history_text}
+User: {question}
+"""
     response = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=prompt

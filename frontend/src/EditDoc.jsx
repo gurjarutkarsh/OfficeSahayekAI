@@ -21,7 +21,7 @@ export default function EditDoc() {
       <header className="editdoc-header">
         <div className="editdoc-header-inner">
           <div className="editdoc-logo">
-            <span className="logo-badge">MS</span>
+            <span className="logo-badge">OS</span>
             <div>
               <h1 className="logo-title">Indravir AI</h1>
               <p className="logo-sub">Document Tools</p>
@@ -54,7 +54,7 @@ export default function EditDoc() {
       </main>
 
       <footer className="editdoc-footer">
-        MS Indravir AI · Document Tools
+        Officesahayek AI · Document Tools
       </footer>
     </div>
   );

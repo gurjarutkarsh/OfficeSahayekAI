@@ -202,3 +202,53 @@ async def convert_images_to_pdf(files: List[UploadFile] = File(...)):
         for path in image_paths:
             if os.path.exists(path):
                 os.remove(path)
+
+
+# ── Library DB ────────────────────────────────────────────
+from services.db_service import (
+    save_image, list_images, delete_image,
+    save_recent, list_recent, delete_recent
+)
+
+class SaveImageRequest(BaseModel):
+    name: str
+    type: str        # signature | seal | letterhead
+    data: str        # base64 string
+    mime_type: str = "image/png"
+
+class SaveRecentRequest(BaseModel):
+    filename: str
+    extracted_text: str
+    ai_response: str = ""
+
+@app.post("/library/save-image")
+async def api_save_image(req: SaveImageRequest):
+    result = save_image(req.name, req.type, req.data, req.mime_type)
+    return result
+
+@app.get("/library/images")
+async def api_list_images(type: str = None):
+    return list_images(type)
+
+@app.delete("/library/images/{image_id}")
+async def api_delete_image(image_id: int):
+    success = delete_image(image_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return {"deleted": True}
+
+@app.post("/library/save-recent")
+async def api_save_recent(req: SaveRecentRequest):
+    result = save_recent(req.filename, req.extracted_text, req.ai_response)
+    return result
+
+@app.get("/library/recent")
+async def api_list_recent():
+    return list_recent()
+
+@app.delete("/library/recent/{doc_id}")
+async def api_delete_recent(doc_id: int):
+    success = delete_recent(doc_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"deleted": True}

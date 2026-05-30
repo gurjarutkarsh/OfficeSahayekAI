@@ -21,12 +21,15 @@ def images_to_pdf(image_paths: list, output_path: str) -> str:
         images.append(img)
     if not images:
         raise ValueError("No images provided")
-    images[0].save(
-        output_path,
-        save_all=True,
-        append_images=images[1:],
-        resolution=200
-    )
+    if len(images) == 1:
+        image = images[0].save(output_path, "PDF", resolution=200)
+    else:
+        images[0].save(
+            output_path,
+            save_all=True,
+            append_images=images[1:],
+            resolution=200
+        )
     return output_path
 
 

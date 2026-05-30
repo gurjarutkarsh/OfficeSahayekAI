@@ -1,7 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import "./App.css";
+import RecentDocs from "./tools/Recentdocs.jsx";
+
+const API = "http://127.0.0.1:8000";
 
 function App() {
   const [file, setFile] = useState(null);
@@ -9,16 +12,21 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("summary");
-  const [question, setQuestion] = useState("");
-  const [qaHistory, setQaHistory] = useState([]);
-  const [qaLoading, setQaLoading] = useState(false);
-  const [qaError, setQaError] = useState("");
+  const [chatInput, setChatInput] = useState("");
+  const [chatHistory, setChatHistory] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
   const [isHindi, setIsHindi] = useState(false);
   const [hindiData, setHindiData] = useState(null);
   const [translateLoading, setTranslateLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
 
   const parseAIResponse = (text) => {
     if (!text) return {};
@@ -47,13 +55,13 @@ function App() {
     setLoading(true);
     setError("");
     setResponse(null);
-    setQaHistory([]);
+    setChatHistory([]);
     setIsHindi(false);
     setHindiData(null);
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await axios.post("http://127.0.0.1:8000/upload", formData);
+      const res = await axios.post(`${API}/upload`, formData);
       setResponse(res.data);
       setActiveTab("summary");
     } catch (err) {
@@ -68,28 +76,43 @@ function App() {
     setFile(null);
     setResponse(null);
     setError("");
-    setQaHistory([]);
-    setQaError("");
-    setQuestion("");
+    setChatHistory([]);
+    setChatError("");
+    setChatInput("");
     setIsHindi(false);
     setHindiData(null);
   };
 
-  const handleAsk = async () => {
-    if (!question.trim()) return;
-    setQaLoading(true);
-    setQaError("");
+  const handleSend = async () => {
+    if (!chatInput.trim()) return;
+    const userMsg = chatInput.trim();
+    setChatInput("");
+    setChatLoading(true);
+    setChatError("");
+
+    // Add user message immediately
+    setChatHistory(prev => [...prev, { role: "user", text: userMsg }]);
+
     try {
-      const res = await axios.post("http://127.0.0.1:8000/ask", {
-        question: question,
-        text: response.text
+      const res = await axios.post(`${API}/ask`, {
+        question: userMsg,
+        text: response.text,
+        hindi: isHindi,
+        history: chatHistory
+          .filter(m => m.role === "user" || m.role === "ai")
+          .reduce((acc, m, i, arr) => {
+            if (m.role === "user" && arr[i+1]?.role === "ai") {
+              acc.push({ question: m.text, answer: arr[i+1].text });
+            }
+            return acc;
+          }, [])
       });
-      setQaHistory(prev => [...prev, { question, answer: res.data.answer }]);
-      setQuestion("");
+      setChatHistory(prev => [...prev, { role: "ai", text: res.data.answer }]);
     } catch (err) {
-      setQaError(err.response?.data?.detail || "Failed to get answer");
+      setChatError(err.response?.data?.detail || "Failed to get answer");
+      setChatHistory(prev => [...prev, { role: "error", text: "Something went wrong. Please try again." }]);
     } finally {
-      setQaLoading(false);
+      setChatLoading(false);
     }
   };
 
@@ -98,7 +121,7 @@ function App() {
     if (hindiData) { setIsHindi(true); return; }
     setTranslateLoading(true);
     try {
-      const res = await axios.post("http://127.0.0.1:8000/translate", {
+      const res = await axios.post(`${API}/translate`, {
         summary: englishData.summary,
         points:  englishData.points,
         hindi:   englishData.hindi,
@@ -107,7 +130,7 @@ function App() {
       const parsed = parseAIResponse(res.data.translated);
       setHindiData(parsed);
       setIsHindi(true);
-    } catch (err) {
+    } catch {
       alert("Translation failed. Please try again.");
     } finally {
       setTranslateLoading(false);
@@ -128,8 +151,7 @@ function App() {
     const text = getTabText();
     if (!text) return;
     const utterance = new SpeechSynthesisUtterance(text);
-    const useHindi = isHindi || activeTab === "hindi";
-    utterance.lang = useHindi ? "hi-IN" : "en-IN";
+    utterance.lang = (isHindi || activeTab === "hindi") ? "hi-IN" : "en-IN";
     utterance.rate = 0.9;
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend   = () => setIsSpeaking(false);
@@ -151,10 +173,9 @@ function App() {
     const recognition = new SpeechRecognition();
     recognition.lang = isHindi ? "hi-IN" : "en-IN";
     recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
     recognition.onresult = (e) => {
       const transcript = e.results[0][0].transcript;
-      setQuestion(prev => prev ? prev + " " + transcript : transcript);
+      setChatInput(prev => prev ? prev + " " + transcript : transcript);
     };
     recognition.onend  = () => setIsListening(false);
     recognition.onerror = () => setIsListening(false);
@@ -167,11 +188,7 @@ function App() {
   const activeData  = isHindi ? hindiData : englishData;
 
   const SpeakBtn = () => (
-    <button
-      className={`speak-btn ${isSpeaking ? "speak-active" : ""}`}
-      onClick={handleSpeak}
-      title={isSpeaking ? "Stop speaking" : "Read aloud"}
-    >
+    <button className={`speak-btn ${isSpeaking ? "speak-active" : ""}`} onClick={handleSpeak}>
       {isSpeaking ? "⏹ Stop" : "🔊 Listen"}
     </button>
   );
@@ -189,9 +206,9 @@ function App() {
       <header className="header">
         <div className="header-content">
           <div className="logo-block">
-            <span className="logo-badge">MS</span>
+            <span className="logo-badge">OS</span>
             <div>
-              <h1 className="logo-title">Indravir AI</h1>
+              <h1 className="logo-title">OfficeSahayek AI</h1>
               <p className="logo-sub">Document Assistant</p>
             </div>
           </div>
@@ -203,22 +220,27 @@ function App() {
       </header>
 
       <main className="main">
+        <RecentDocs onSelect={(doc) => {
+          setResponse({
+            filename: doc.filename,
+            text: doc.extracted_text,
+            ai_response: { ai_response: doc.ai_response },
+          });
+          setActiveTab("summary");
+          setChatHistory([]);
+          setIsHindi(false);
+          setHindiData(null);
+        }} />
         <div className="card upload-card">
           <div className="upload-area">
             <label className="file-label">
-              <input
-                type="file"
-                accept=".pdf,.png,.jpg,.jpeg"
+              <input type="file" accept=".pdf,.png,.jpg,.jpeg"
                 onChange={(e) => {
                   setFile(e.target.files[0]);
-                  setError("");
-                  setResponse(null);
-                  setQaHistory([]);
-                  setIsHindi(false);
-                  setHindiData(null);
-                  stopSpeech();
-                }}
-              />
+                  setError(""); setResponse(null);
+                  setChatHistory([]); setIsHindi(false);
+                  setHindiData(null); stopSpeech();
+                }} />
               <span className="file-btn">Choose File</span>
               <span className="file-name">
                 {file ? file.name : "No file chosen — PDF, PNG, JPG supported"}
@@ -229,7 +251,6 @@ function App() {
             </button>
             {response && <button className="reset-btn" onClick={handleReset}>✕ Clear</button>}
           </div>
-
           {error && <div className="error-box">⚠️ {error}</div>}
           {loading && (
             <div className="loading-bar-wrap">
@@ -248,8 +269,7 @@ function App() {
               </div>
               <button
                 className={`translate-btn ${isHindi ? "translate-active" : ""}`}
-                onClick={handleTranslate}
-                disabled={translateLoading}
+                onClick={handleTranslate} disabled={translateLoading}
               >
                 {translateLoading
                   ? <><span className="spinner-inline-dark" /> अनुवाद हो रहा है…</>
@@ -259,11 +279,9 @@ function App() {
 
             <div className="tabs">
               {tabs.map((tab) => (
-                <button
-                  key={tab.id}
+                <button key={tab.id}
                   className={`tab-btn ${activeTab === tab.id ? "active" : ""}`}
-                  onClick={() => { setActiveTab(tab.id); stopSpeech(); }}
-                >
+                  onClick={() => { setActiveTab(tab.id); stopSpeech(); }}>
                   <span className="tab-emoji">{tab.emoji}</span>
                   <span className="tab-label">{tab.label}</span>
                 </button>
@@ -282,7 +300,6 @@ function App() {
                     : <p className="empty-msg">No summary available.</p>}
                 </div>
               )}
-
               {activeTab === "points" && (
                 <div className="panel-body fade-in">
                   <div className="panel-header">
@@ -301,7 +318,6 @@ function App() {
                   ) : <p className="empty-msg">No key points available.</p>}
                 </div>
               )}
-
               {activeTab === "hindi" && (
                 <div className="panel-body fade-in">
                   <div className="panel-header">
@@ -313,7 +329,6 @@ function App() {
                     : <p className="empty-msg">Hindi explanation not available.</p>}
                 </div>
               )}
-
               {activeTab === "actions" && (
                 <div className="panel-body fade-in">
                   <div className="panel-header">
@@ -332,7 +347,6 @@ function App() {
                   ) : <p className="empty-msg">No actions available.</p>}
                 </div>
               )}
-
               {activeTab === "text" && (
                 <div className="panel-body fade-in">
                   <div className="panel-header">
@@ -343,50 +357,70 @@ function App() {
               )}
             </div>
 
-            <div className="qa-section">
-              <h3 className="qa-title">❓ {isHindi ? "प्रश्न पूछें" : "Ask a Question"}</h3>
-              <div className="qa-input-row">
+            {/* ── Chat with Doc ── */}
+            <div className="chat-section">
+              <div className="chat-header">
+                <h3 className="chat-title">💬 {isHindi ? "दस्तावेज़ से बात करें" : "Chat with Document"}</h3>
+                {chatHistory.length > 0 && (
+                  <button className="chat-clear-btn" onClick={() => setChatHistory([])}>
+                    Clear chat
+                  </button>
+                )}
+              </div>
+
+              {/* Messages */}
+              <div className="chat-messages">
+                {chatHistory.length === 0 && (
+                  <div className="chat-empty">
+                    <p>{isHindi ? "कोई भी सवाल पूछें…" : "Ask anything about this document…"}</p>
+                  </div>
+                )}
+                {chatHistory.map((msg, i) => (
+                  <div key={i} className={`chat-bubble-wrap ${msg.role}`}>
+                    <div className={`chat-bubble ${msg.role}`}>
+                      <p className={isHindi && msg.role === "ai" ? "hindi-text" : ""}>{msg.text}</p>
+                    </div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div className="chat-bubble-wrap ai">
+                    <div className="chat-bubble ai chat-typing">
+                      <span/><span/><span/>
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Input */}
+              <div className="chat-input-row">
                 <input
-                  className="qa-input"
+                  className="chat-input"
                   type="text"
-                  placeholder={isHindi ? "उदा. अंतिम तिथि क्या है?" : "e.g. What is the deadline? Who signed this?"}
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !qaLoading && handleAsk()}
-                  disabled={qaLoading}
+                  placeholder={isHindi ? "यहाँ सवाल टाइप करें…" : "Type your question here…"}
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && !chatLoading && handleSend()}
+                  disabled={chatLoading}
                 />
                 <button
                   className={`mic-btn ${isListening ? "mic-active" : ""}`}
                   onClick={handleMic}
-                  title={isListening ? "Stop listening" : "Speak your question"}
-                >
-                  {isListening ? "🔴" : "🎤"}
-                </button>
-                <button className="qa-btn" onClick={handleAsk} disabled={qaLoading || !question.trim()}>
-                  {qaLoading ? <span className="spinner-inline" /> : isHindi ? "पूछें" : "Ask"}
+                  title={isListening ? "Stop" : "Speak"}
+                >{isListening ? "🔴" : "🎤"}</button>
+                <button className="chat-send-btn" onClick={handleSend}
+                  disabled={chatLoading || !chatInput.trim()}>
+                  {chatLoading ? <span className="spinner-inline" /> : "➤"}
                 </button>
               </div>
-
               {isListening && (
                 <p className="listening-msg">🎤 {isHindi ? "सुन रहा हूँ… बोलिए" : "Listening… speak now"}</p>
-              )}
-              {qaError && <div className="error-box">⚠️ {qaError}</div>}
-
-              {qaHistory.length > 0 && (
-                <div className="qa-history">
-                  {qaHistory.map((item, i) => (
-                    <div key={i} className="qa-pair">
-                      <p className="qa-question">Q: {item.question}</p>
-                      <p className="qa-answer">{item.answer}</p>
-                    </div>
-                  ))}
-                </div>
               )}
             </div>
 
             <div className="coming-soon">
               <span className="coming-soon-label">Coming soon:</span>
-              {["💬 Chat with Doc", "📱 More Languages"].map(f => (
+              {["📱 More Languages"].map(f => (
                 <span key={f} className="soon-pill">{f}</span>
               ))}
             </div>
@@ -395,7 +429,7 @@ function App() {
       </main>
 
       <footer className="footer">
-        MS Indravir AI · Built for every Indian office worker
+        OfficeSahayek AI · Built for every Indian office worker
       </footer>
     </div>
   );
