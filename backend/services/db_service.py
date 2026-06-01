@@ -1,15 +1,11 @@
 import os
-import base64
-import json
 from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "library.db")
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-
-engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./library.db")
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
@@ -18,29 +14,31 @@ class SavedImage(Base):
     __tablename__ = "saved_images"
     id         = Column(Integer, primary_key=True, index=True)
     name       = Column(String(200), nullable=False)
-    type       = Column(String(50), nullable=False)  # signature | seal | letterhead
-    data       = Column(Text, nullable=False)         # base64 encoded image
+    type       = Column(String(50), nullable=False)
+    data       = Column(Text, nullable=False)
     mime_type  = Column(String(50), default="image/png")
+    user_id    = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class RecentDocument(Base):
     __tablename__ = "recent_documents"
-    id           = Column(Integer, primary_key=True, index=True)
-    filename     = Column(String(200), nullable=False)
+    id             = Column(Integer, primary_key=True, index=True)
+    filename       = Column(String(200), nullable=False)
     extracted_text = Column(Text, nullable=True)
-    ai_response  = Column(Text, nullable=True)
-    created_at   = Column(DateTime, default=datetime.utcnow)
+    ai_response    = Column(Text, nullable=True)
+    user_id        = Column(Integer, nullable=True)
+    created_at     = Column(DateTime, default=datetime.utcnow)
 
 
 Base.metadata.create_all(bind=engine)
 
 
 # ── Saved Images ──────────────────────────────────────────
-def save_image(name: str, image_type: str, data: str, mime_type: str = "image/png"):
+def save_image(name: str, image_type: str, data: str, mime_type: str = "image/png", user_id: int = None):
     db = SessionLocal()
     try:
-        img = SavedImage(name=name, type=image_type, data=data, mime_type=mime_type)
+        img = SavedImage(name=name, type=image_type, data=data, mime_type=mime_type, user_id=user_id)
         db.add(img)
         db.commit()
         db.refresh(img)
@@ -49,10 +47,12 @@ def save_image(name: str, image_type: str, data: str, mime_type: str = "image/pn
         db.close()
 
 
-def list_images(image_type: str = None):
+def list_images(image_type: str = None, user_id: int = None):
     db = SessionLocal()
     try:
         q = db.query(SavedImage)
+        if user_id:
+            q = q.filter(SavedImage.user_id == user_id)
         if image_type:
             q = q.filter(SavedImage.type == image_type)
         items = q.order_by(SavedImage.created_at.desc()).all()
@@ -63,10 +63,13 @@ def list_images(image_type: str = None):
         db.close()
 
 
-def delete_image(image_id: int):
+def delete_image(image_id: int, user_id: int = None):
     db = SessionLocal()
     try:
-        img = db.query(SavedImage).filter(SavedImage.id == image_id).first()
+        q = db.query(SavedImage).filter(SavedImage.id == image_id)
+        if user_id:
+            q = q.filter(SavedImage.user_id == user_id)
+        img = q.first()
         if img:
             db.delete(img)
             db.commit()
@@ -77,20 +80,22 @@ def delete_image(image_id: int):
 
 
 # ── Recent Documents ──────────────────────────────────────
-def save_recent(filename: str, extracted_text: str, ai_response: str):
+def save_recent(filename: str, extracted_text: str, ai_response: str, user_id: int = None):
     db = SessionLocal()
     try:
-        # Keep only last 10
-        count = db.query(RecentDocument).count()
+        q = db.query(RecentDocument)
+        if user_id:
+            q = q.filter(RecentDocument.user_id == user_id)
+        count = q.count()
         if count >= 10:
-            oldest = db.query(RecentDocument).order_by(RecentDocument.created_at.asc()).first()
+            oldest = q.order_by(RecentDocument.created_at.asc()).first()
             if oldest:
                 db.delete(oldest)
-
         doc = RecentDocument(
             filename=filename,
-            extracted_text=extracted_text[:5000],  # limit size
-            ai_response=ai_response
+            extracted_text=extracted_text[:5000],
+            ai_response=ai_response,
+            user_id=user_id
         )
         db.add(doc)
         db.commit()
@@ -100,10 +105,13 @@ def save_recent(filename: str, extracted_text: str, ai_response: str):
         db.close()
 
 
-def list_recent():
+def list_recent(user_id: int = None):
     db = SessionLocal()
     try:
-        docs = db.query(RecentDocument).order_by(RecentDocument.created_at.desc()).all()
+        q = db.query(RecentDocument)
+        if user_id:
+            q = q.filter(RecentDocument.user_id == user_id)
+        docs = q.order_by(RecentDocument.created_at.desc()).all()
         return [{"id": d.id, "filename": d.filename,
                  "extracted_text": d.extracted_text,
                  "ai_response": d.ai_response,
@@ -112,10 +120,13 @@ def list_recent():
         db.close()
 
 
-def delete_recent(doc_id: int):
+def delete_recent(doc_id: int, user_id: int = None):
     db = SessionLocal()
     try:
-        doc = db.query(RecentDocument).filter(RecentDocument.id == doc_id).first()
+        q = db.query(RecentDocument).filter(RecentDocument.id == doc_id)
+        if user_id:
+            q = q.filter(RecentDocument.user_id == user_id)
+        doc = q.first()
         if doc:
             db.delete(doc)
             db.commit()

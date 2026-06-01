@@ -19,7 +19,7 @@ def extract_text(file_path):
     elif file_path.lower().endswith((".png", ".jpg", ".jpeg")):
         image = Image.open(file_path)
         extracted_text = pytesseract.image_to_string(
-            Image,
+            image,
             lang="eng",
         )
     else:

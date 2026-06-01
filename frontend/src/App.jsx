@@ -4,9 +4,39 @@ import axios from "axios";
 import "./App.css";
 import RecentDocs from "./tools/Recentdocs.jsx";
 
-const API = "http://127.0.0.1:8000";
+const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-function App() {
+// ── Error message helper ──────────────────────────────
+const getErrorMessage = (err, context = "") => {
+  const status = err?.response?.status;
+  const detail = err?.response?.data?.detail;
+
+  if (!navigator.onLine) return "No internet connection. Please check your network.";
+  if (status === 429) return "Too many requests. Please wait a minute and try again.";
+  if (status === 503 || status === 502) return "AI service is temporarily busy. Please try again in a few seconds.";
+  if (status === 413) return "File is too large. Please use a smaller file.";
+  if (status === 400) return detail || "Invalid file. Please upload a PDF, PNG, or JPG.";
+  if (status === 500) return "Server error. Please make sure the backend is running.";
+  if (err?.code === "ERR_NETWORK") return "Cannot connect to server. Please make sure the backend is running.";
+
+  if (context === "upload") return detail || "Failed to analyze document. Please try again.";
+  if (context === "chat")   return detail || "Failed to get answer. Please try again.";
+  if (context === "translate") return "Translation failed. Please try again.";
+  return detail || err?.message || "Something went wrong. Please try again.";
+};
+
+// ── Error Box Component ───────────────────────────────
+const ErrorBox = ({ message, onDismiss }) => (
+  <div className="error-box-enhanced">
+    <span className="error-box-icon">⚠️</span>
+    <span className="error-box-msg">{message}</span>
+    {onDismiss && (
+      <button className="error-box-dismiss" onClick={onDismiss}>✕</button>
+    )}
+  </div>
+);
+
+function App({ user, onLogout }) {
   const [file, setFile] = useState(null);
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -19,8 +49,10 @@ function App() {
   const [isHindi, setIsHindi] = useState(false);
   const [hindiData, setHindiData] = useState(null);
   const [translateLoading, setTranslateLoading] = useState(false);
+  const [translateError, setTranslateError] = useState("");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [fileError, setFileError] = useState("");
   const recognitionRef = useRef(null);
   const chatEndRef = useRef(null);
 
@@ -49,8 +81,34 @@ function App() {
     setIsSpeaking(false);
   };
 
+  const validateFile = (f) => {
+    if (!f) return "Please select a file.";
+    const ext = f.name.split(".").pop().toLowerCase();
+    if (!["pdf","png","jpg","jpeg"].includes(ext))
+      return "Unsupported file type. Please upload a PDF, PNG, or JPG.";
+    if (f.size > 20 * 1024 * 1024)
+      return "File is too large. Maximum size is 20MB.";
+    return "";
+  };
+
+  const handleFileChange = (e) => {
+    const f = e.target.files[0];
+    const err = validateFile(f);
+    setFileError(err);
+    if (!err) {
+      setFile(f);
+      setError("");
+      setResponse(null);
+      setChatHistory([]);
+      setIsHindi(false);
+      setHindiData(null);
+      stopSpeech();
+    }
+  };
+
   const handleUpload = async () => {
-    if (!file) { setError("Please select a file first"); return; }
+    const err = validateFile(file);
+    if (err) { setError(err); return; }
     stopSpeech();
     setLoading(true);
     setError("");
@@ -65,7 +123,7 @@ function App() {
       setResponse(res.data);
       setActiveTab("summary");
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || "Upload failed");
+      setError(getErrorMessage(err, "upload"));
     } finally {
       setLoading(false);
     }
@@ -76,11 +134,13 @@ function App() {
     setFile(null);
     setResponse(null);
     setError("");
+    setFileError("");
     setChatHistory([]);
     setChatError("");
     setChatInput("");
     setIsHindi(false);
     setHindiData(null);
+    setTranslateError("");
   };
 
   const handleSend = async () => {
@@ -89,10 +149,7 @@ function App() {
     setChatInput("");
     setChatLoading(true);
     setChatError("");
-
-    // Add user message immediately
     setChatHistory(prev => [...prev, { role: "user", text: userMsg }]);
-
     try {
       const res = await axios.post(`${API}/ask`, {
         question: userMsg,
@@ -101,16 +158,16 @@ function App() {
         history: chatHistory
           .filter(m => m.role === "user" || m.role === "ai")
           .reduce((acc, m, i, arr) => {
-            if (m.role === "user" && arr[i+1]?.role === "ai") {
+            if (m.role === "user" && arr[i+1]?.role === "ai")
               acc.push({ question: m.text, answer: arr[i+1].text });
-            }
             return acc;
           }, [])
       });
       setChatHistory(prev => [...prev, { role: "ai", text: res.data.answer }]);
     } catch (err) {
-      setChatError(err.response?.data?.detail || "Failed to get answer");
-      setChatHistory(prev => [...prev, { role: "error", text: "Something went wrong. Please try again." }]);
+      const msg = getErrorMessage(err, "chat");
+      setChatError(msg);
+      setChatHistory(prev => [...prev, { role: "error", text: msg }]);
     } finally {
       setChatLoading(false);
     }
@@ -120,6 +177,7 @@ function App() {
     if (isHindi) { setIsHindi(false); return; }
     if (hindiData) { setIsHindi(true); return; }
     setTranslateLoading(true);
+    setTranslateError("");
     try {
       const res = await axios.post(`${API}/translate`, {
         summary: englishData.summary,
@@ -130,8 +188,8 @@ function App() {
       const parsed = parseAIResponse(res.data.translated);
       setHindiData(parsed);
       setIsHindi(true);
-    } catch {
-      alert("Translation failed. Please try again.");
+    } catch (err) {
+      setTranslateError(getErrorMessage(err, "translate"));
     } finally {
       setTranslateLoading(false);
     }
@@ -162,7 +220,7 @@ function App() {
   const handleMic = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Voice input is not supported in this browser. Please use Chrome or Edge.");
+      setChatError("Voice input is not supported in this browser. Please use Chrome or Edge.");
       return;
     }
     if (isListening) {
@@ -178,7 +236,11 @@ function App() {
       setChatInput(prev => prev ? prev + " " + transcript : transcript);
     };
     recognition.onend  = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
+    recognition.onerror = (e) => {
+      setIsListening(false);
+      if (e.error === "not-allowed") setChatError("Microphone access denied. Please allow microphone access.");
+      else if (e.error === "no-speech") setChatError("No speech detected. Please try again.");
+    };
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
@@ -214,7 +276,18 @@ function App() {
           </div>
           <div className="header-right">
             <p className="header-tagline">Upload any document — get instant plain-language answers</p>
-            <Link to="/edit" className="header-tool-link">🛠 Document Tools</Link>
+            <div style={{ display:"flex", alignItems:"center", gap:"0.5rem" }}>
+              <Link to="/edit" className="header-tool-link">🛠 Document Tools</Link>
+              <span style={{ fontSize:"0.78rem", color:"rgba(255,255,255,0.6)" }}>
+                {user?.name || user?.email}
+              </span>
+              <button onClick={onLogout}
+                style={{ background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)",
+                  color:"rgba(255,255,255,0.85)", borderRadius:6, padding:"0.2rem 0.6rem",
+                  fontSize:"0.75rem", cursor:"pointer", fontFamily:"'Noto Sans',sans-serif" }}>
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -231,16 +304,11 @@ function App() {
           setIsHindi(false);
           setHindiData(null);
         }} />
+
         <div className="card upload-card">
           <div className="upload-area">
             <label className="file-label">
-              <input type="file" accept=".pdf,.png,.jpg,.jpeg"
-                onChange={(e) => {
-                  setFile(e.target.files[0]);
-                  setError(""); setResponse(null);
-                  setChatHistory([]); setIsHindi(false);
-                  setHindiData(null); stopSpeech();
-                }} />
+              <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileChange} />
               <span className="file-btn">Choose File</span>
               <span className="file-name">
                 {file ? file.name : "No file chosen — PDF, PNG, JPG supported"}
@@ -251,11 +319,14 @@ function App() {
             </button>
             {response && <button className="reset-btn" onClick={handleReset}>✕ Clear</button>}
           </div>
-          {error && <div className="error-box">⚠️ {error}</div>}
+
+          {fileError && <ErrorBox message={fileError} onDismiss={() => setFileError("")} />}
+          {error     && <ErrorBox message={error}     onDismiss={() => setError("")} />}
+
           {loading && (
             <div className="loading-bar-wrap">
               <div className="loading-bar" />
-              <p className="loading-text">Reading and analyzing your document…</p>
+              <p className="loading-text">Reading and analyzing your document… this may take 15–30 seconds</p>
             </div>
           )}
         </div>
@@ -276,6 +347,8 @@ function App() {
                   : isHindi ? "🔤 English" : "अ हिंदी में देखें"}
               </button>
             </div>
+
+            {translateError && <ErrorBox message={translateError} onDismiss={() => setTranslateError("")} />}
 
             <div className="tabs">
               {tabs.map((tab) => (
@@ -357,18 +430,15 @@ function App() {
               )}
             </div>
 
-            {/* ── Chat with Doc ── */}
+            {/* Chat with Doc */}
             <div className="chat-section">
               <div className="chat-header">
                 <h3 className="chat-title">💬 {isHindi ? "दस्तावेज़ से बात करें" : "Chat with Document"}</h3>
                 {chatHistory.length > 0 && (
-                  <button className="chat-clear-btn" onClick={() => setChatHistory([])}>
-                    Clear chat
-                  </button>
+                  <button className="chat-clear-btn" onClick={() => setChatHistory([])}>Clear chat</button>
                 )}
               </div>
 
-              {/* Messages */}
               <div className="chat-messages">
                 {chatHistory.length === 0 && (
                   <div className="chat-empty">
@@ -384,30 +454,29 @@ function App() {
                 ))}
                 {chatLoading && (
                   <div className="chat-bubble-wrap ai">
-                    <div className="chat-bubble ai chat-typing">
-                      <span/><span/><span/>
-                    </div>
+                    <div className="chat-bubble ai chat-typing"><span/><span/><span/></div>
                   </div>
                 )}
                 <div ref={chatEndRef} />
               </div>
 
-              {/* Input */}
+              {chatError && (
+                <div style={{ padding: "0 1.25rem" }}>
+                  <ErrorBox message={chatError} onDismiss={() => setChatError("")} />
+                </div>
+              )}
+
               <div className="chat-input-row">
-                <input
-                  className="chat-input"
-                  type="text"
+                <input className="chat-input" type="text"
                   placeholder={isHindi ? "यहाँ सवाल टाइप करें…" : "Type your question here…"}
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && !chatLoading && handleSend()}
-                  disabled={chatLoading}
-                />
-                <button
-                  className={`mic-btn ${isListening ? "mic-active" : ""}`}
-                  onClick={handleMic}
-                  title={isListening ? "Stop" : "Speak"}
-                >{isListening ? "🔴" : "🎤"}</button>
+                  disabled={chatLoading} />
+                <button className={`mic-btn ${isListening ? "mic-active" : ""}`}
+                  onClick={handleMic} title={isListening ? "Stop" : "Speak"}>
+                  {isListening ? "🔴" : "🎤"}
+                </button>
                 <button className="chat-send-btn" onClick={handleSend}
                   disabled={chatLoading || !chatInput.trim()}>
                   {chatLoading ? <span className="spinner-inline" /> : "➤"}

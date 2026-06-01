@@ -1,9 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import ImageLibrary from "./Imagelibrary.jsx";
 
 export default function SignatureInserter() {
   const [pdfFile, setPdfFile] = useState(null);
-  const [sigFile, setSigFile] = useState(null);
   const [sigPreview, setSigPreview] = useState(null);
   const [sigPos, setSigPos] = useState({ x: 100, y: 400 });
   const [sigSize, setSigSize] = useState({ w: 160, h: 60 });
@@ -16,10 +15,27 @@ export default function SignatureInserter() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [activePanel, setActivePanel] = useState("position");
+  const [rendering, setRendering] = useState(false);
+
   const canvasRef = useRef(null);
   const pdfDocRef = useRef(null);
-  const sigImgRef = useRef(null);
-  const processedSigRef = useRef(null);
+  const sigImgRef = useRef(null);       // original image
+  const processedSigRef = useRef(null); // bg-removed image
+  const renderQueued = useRef(false);
+  const isRenderingRef = useRef(false);
+
+  // State refs to avoid stale closures in renderCanvas
+  const sigPosRef = useRef(sigPos);
+  const sigSizeRef = useRef(sigSize);
+  const rotateRef = useRef(rotate);
+  const opacityRef = useRef(opacity);
+  const pageRef = useRef(page);
+
+  useEffect(() => { sigPosRef.current = sigPos; }, [sigPos]);
+  useEffect(() => { sigSizeRef.current = sigSize; }, [sigSize]);
+  useEffect(() => { rotateRef.current = rotate; }, [rotate]);
+  useEffect(() => { opacityRef.current = opacity; }, [opacity]);
+  useEffect(() => { pageRef.current = page; }, [page]);
 
   useEffect(() => {
     if (!window.pdfjsLib) {
@@ -33,36 +49,51 @@ export default function SignatureInserter() {
     }
   }, []);
 
-  const handlePdf = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setPdfFile(file);
-    const url = URL.createObjectURL(file);
-    setSigPos({ x: 100, y: 400 });
-    if (window.pdfjsLib) {
-      const pdf = await window.pdfjsLib.getDocument(url).promise;
-      pdfDocRef.current = pdf;
-      setTotalPages(pdf.numPages);
-      setPage(1);
-      renderPage(pdf, 1);
+  // ── Render PDF page + signature in one shot (no blink) ───
+  const renderCanvas = useCallback(async () => {
+    if (isRenderingRef.current) { renderQueued.current = true; return; }
+    if (!pdfDocRef.current) return;
+    isRenderingRef.current = true;
+
+    try {
+      const pdf = pdfDocRef.current;
+      const pdfPage = await pdf.getPage(pageRef.current);
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const viewport = pdfPage.getViewport({ scale: 1.3 });
+      canvas.width  = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+
+      // Render PDF page
+      await pdfPage.render({ canvasContext: ctx, viewport }).promise;
+
+      // Draw signature on top in same frame — no blink
+      const sig = processedSigRef.current || sigImgRef.current;
+      if (sig) {
+        const pos  = sigPosRef.current;
+        const size = sigSizeRef.current;
+        ctx.save();
+        ctx.globalAlpha = opacityRef.current / 100;
+        const cx = pos.x + size.w / 2;
+        const cy = pos.y + size.h / 2;
+        ctx.translate(cx, cy);
+        ctx.rotate((rotateRef.current * Math.PI) / 180);
+        ctx.drawImage(sig, -size.w / 2, -size.h / 2, size.w, size.h);
+        ctx.restore();
+      }
+    } finally {
+      isRenderingRef.current = false;
+      if (renderQueued.current) {
+        renderQueued.current = false;
+        renderCanvas();
+      }
     }
-  };
+  }, []);
 
-  const handleSig = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setSigFile(file);
-    const url = URL.createObjectURL(file);
-    setSigPreview(url);
-    const img = new Image();
-    img.onload = () => {
-      sigImgRef.current = img;
-      processSignature(img, removeBg, bgThreshold);
-    };
-    img.src = url;
-  };
-
-  const processSignature = (img, doRemoveBg, threshold) => {
+  // ── Process signature (bg removal) — no intermediate state ──
+  const processSignature = useCallback((img, doRemoveBg, threshold) => {
     const offscreen = document.createElement("canvas");
     offscreen.width  = img.naturalWidth;
     offscreen.height = img.naturalHeight;
@@ -74,60 +105,76 @@ export default function SignatureInserter() {
       const data = imageData.data;
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i], g = data[i+1], b = data[i+2];
-        const brightness = (r + g + b) / 3;
-        if (brightness > threshold) {
-          // Light pixel = background, make transparent
-          data[i+3] = 0;
-        }
-        // Dark pixels keep their original color — no forced black
+        if ((r + g + b) / 3 > threshold) data[i+3] = 0;
       }
       ctx.putImageData(imageData, 0, 0);
     }
 
+    // Use synchronous toDataURL → no async blink
     const processed = new Image();
     processed.onload = () => {
       processedSigRef.current = processed;
       renderCanvas();
     };
     processed.src = offscreen.toDataURL();
+  }, [renderCanvas]);
+
+  const handlePdf = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setPdfFile(file);
+    const url = URL.createObjectURL(file);
+    setSigPos({ x: 100, y: 400 });
+    sigPosRef.current = { x: 100, y: 400 };
+    if (window.pdfjsLib) {
+      const pdf = await window.pdfjsLib.getDocument(url).promise;
+      pdfDocRef.current = pdf;
+      setTotalPages(pdf.numPages);
+      setPage(1);
+      pageRef.current = 1;
+      renderCanvas();
+    }
   };
 
+  const handleSig = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setSigPreview(url);
+    const img = new Image();
+    img.onload = () => {
+      sigImgRef.current = img;
+      processedSigRef.current = null;
+      processSignature(img, removeBg, bgThreshold);
+    };
+    img.src = url;
+  };
+
+  const loadSigFromUrl = (url) => {
+    setSigPreview(url);
+    const img = new Image();
+    img.onload = () => {
+      sigImgRef.current = img;
+      processedSigRef.current = null;
+      processSignature(img, removeBg, bgThreshold);
+    };
+    img.src = url;
+  };
+
+  // Re-process when removeBg or threshold changes — debounced
   useEffect(() => {
-    if (sigImgRef.current) processSignature(sigImgRef.current, removeBg, bgThreshold);
-  }, [removeBg, bgThreshold]);
+    if (!sigImgRef.current) return;
+    const timer = setTimeout(() => {
+      processedSigRef.current = null;
+      processSignature(sigImgRef.current, removeBg, bgThreshold);
+    }, 150); // debounce slider
+    return () => clearTimeout(timer);
+  }, [removeBg, bgThreshold, processSignature]);
 
-  const renderPage = async (pdf, pageNum) => {
-    const pdfPage = await pdf.getPage(pageNum);
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const viewport = pdfPage.getViewport({ scale: 1.3 });
-    canvas.width  = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext("2d");
-    await pdfPage.render({ canvasContext: ctx, viewport }).promise;
-    if (processedSigRef.current) drawSignature(ctx);
-  };
+  // Re-render when position/size/rotate/opacity/page changes
+  useEffect(() => { renderCanvas(); }, [sigPos, sigSize, rotate, opacity, page, renderCanvas]);
 
-  const renderCanvas = async () => {
-    if (!pdfDocRef.current) return;
-    await renderPage(pdfDocRef.current, page);
-  };
-
-  const drawSignature = (ctx) => {
-    const sig = processedSigRef.current || sigImgRef.current;
-    if (!sig) return;
-    ctx.save();
-    ctx.globalAlpha = opacity / 100;
-    const cx = sigPos.x + sigSize.w / 2;
-    const cy = sigPos.y + sigSize.h / 2;
-    ctx.translate(cx, cy);
-    ctx.rotate((rotate * Math.PI) / 180);
-    ctx.drawImage(sig, -sigSize.w / 2, -sigSize.h / 2, sigSize.w, sigSize.h);
-    ctx.restore();
-  };
-
-  useEffect(() => { renderCanvas(); }, [sigPos, sigSize, rotate, opacity, page]);
-
+  // ── Drag handlers ─────────────────────────────────────────
   const onMouseDown = (e) => {
     if (!sigPreview) return;
     const canvas = canvasRef.current;
@@ -136,10 +183,11 @@ export default function SignatureInserter() {
     const scaleY = canvas.height / rect.height;
     const mx = (e.clientX - rect.left) * scaleX;
     const my = (e.clientY - rect.top)  * scaleY;
-    if (mx >= sigPos.x && mx <= sigPos.x + sigSize.w &&
-        my >= sigPos.y && my <= sigPos.y + sigSize.h) {
+    const pos  = sigPosRef.current;
+    const size = sigSizeRef.current;
+    if (mx >= pos.x && mx <= pos.x + size.w && my >= pos.y && my <= pos.y + size.h) {
       setDragging(true);
-      setDragOffset({ x: mx - sigPos.x, y: my - sigPos.y });
+      setDragOffset({ x: mx - pos.x, y: my - pos.y });
     }
   };
 
@@ -149,10 +197,12 @@ export default function SignatureInserter() {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width  / rect.width;
     const scaleY = canvas.height / rect.height;
-    setSigPos({
+    const newPos = {
       x: (e.clientX - rect.left) * scaleX - dragOffset.x,
       y: (e.clientY - rect.top)  * scaleY - dragOffset.y,
-    });
+    };
+    setSigPos(newPos);
+    sigPosRef.current = newPos;
   };
 
   const onMouseUp = () => setDragging(false);
@@ -196,12 +246,7 @@ export default function SignatureInserter() {
               : <><div className="upload-zone-icon">✍️</div><div className="upload-zone-text">Click to upload signature</div><div className="upload-zone-hint">PNG recommended</div></>}
           </label>
           <ImageLibrary type="signature" label="Signature"
-            onSelect={(url, name) => {
-              setSigPreview(url);
-              const img = new Image();
-              img.onload = () => { sigImgRef.current = img; processSignature(img, removeBg, bgThreshold); };
-              img.src = url;
-            }} />
+            onSelect={(url) => loadSigFromUrl(url)} />
         </div>
       </div>
 
@@ -239,12 +284,12 @@ export default function SignatureInserter() {
                 <div className="field-group">
                   <label className="field-label">X Position: {Math.round(sigPos.x)}px</label>
                   <input type="range" min={0} max={800} value={sigPos.x}
-                    onChange={e => setSigPos(p => ({ ...p, x: +e.target.value }))} style={{ width: "100%" }} />
+                    onChange={e => { const v={...sigPosRef.current, x:+e.target.value}; setSigPos(v); sigPosRef.current=v; }} style={{ width: "100%" }} />
                 </div>
                 <div className="field-group">
                   <label className="field-label">Y Position: {Math.round(sigPos.y)}px</label>
                   <input type="range" min={0} max={1100} value={sigPos.y}
-                    onChange={e => setSigPos(p => ({ ...p, y: +e.target.value }))} style={{ width: "100%" }} />
+                    onChange={e => { const v={...sigPosRef.current, y:+e.target.value}; setSigPos(v); sigPosRef.current=v; }} style={{ width: "100%" }} />
                 </div>
               </div>
             </div>
@@ -301,9 +346,9 @@ export default function SignatureInserter() {
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
             <span style={{ fontSize: "0.82rem", color: "#4A5568", fontWeight: 600 }}>Page {page} of {totalPages}</span>
             <button className="btn-secondary" style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem" }}
-              disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
+              disabled={page <= 1} onClick={() => { setPage(p => p-1); pageRef.current = page-1; }}>← Prev</button>
             <button className="btn-secondary" style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem" }}
-              disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next →</button>
+              disabled={page >= totalPages} onClick={() => { setPage(p => p+1); pageRef.current = page+1; }}>Next →</button>
             {sigPreview && <span style={{ fontSize: "0.78rem", color: "#718096" }}>💡 Drag signature to reposition</span>}
           </div>
 

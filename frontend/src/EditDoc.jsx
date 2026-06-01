@@ -9,11 +9,11 @@ import "./tools/tools.css";
 const TOOLS = [
   { id: "letterhead", label: "Letterhead", emoji: "🏢" },
   { id: "signature",  label: "Signature",  emoji: "✍️" },
-  { id: "pdftoword",  label: "Converter", emoji: "🔄" },
+  { id: "pdftoword",  label: "Converter",  emoji: "🔄" },
   { id: "editdoc",    label: "Edit Doc",   emoji: "✏️" },
 ];
 
-export default function EditDoc() {
+export default function EditDoc({ user, onLogout }) {
   const [activeTool, setActiveTool] = useState("letterhead");
 
   return (
@@ -23,11 +23,24 @@ export default function EditDoc() {
           <div className="editdoc-logo">
             <span className="logo-badge">OS</span>
             <div>
-              <h1 className="logo-title">Indravir AI</h1>
+              <h1 className="logo-title">OfficeSahayek AI</h1>
               <p className="logo-sub">Document Tools</p>
             </div>
           </div>
-          <Link to="/" className="back-btn">← Back to Analyzer</Link>
+          <div style={{ display:"flex", alignItems:"center", gap:"0.5rem" }}>
+            <Link to="/" className="back-btn">← Back to Analyzer</Link>
+            {user && (
+              <>
+                <span style={{ fontSize:"0.78rem", color:"rgba(255,255,255,0.6)" }}>{user.name}</span>
+                <button onClick={onLogout}
+                  style={{ background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)",
+                    color:"rgba(255,255,255,0.85)", borderRadius:6, padding:"0.2rem 0.6rem",
+                    fontSize:"0.75rem", cursor:"pointer" }}>
+                  Logout
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -54,7 +67,7 @@ export default function EditDoc() {
       </main>
 
       <footer className="editdoc-footer">
-        Officesahayek AI · Document Tools
+        OfficeSahayek AI · Document Tools
       </footer>
     </div>
   );
