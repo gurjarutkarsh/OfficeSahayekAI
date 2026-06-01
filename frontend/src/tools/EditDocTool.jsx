@@ -18,6 +18,7 @@ export default function EditDocTool() {
   const [cropRect, setCropRect] = useState(null);
   const [isCropping, setIsCropping] = useState(false);
   const [croppedPages, setCroppedPages] = useState({});
+  const [cropResizing, setCropResizing] = useState(null); // { handle, startX, startY, startRect }
   // Edit state
   const [textBoxes, setTextBoxes] = useState({});
   const [activeId, setActiveId] = useState(null);
@@ -68,18 +69,11 @@ export default function EditDocTool() {
 
   // ── Crop handlers ──────────────────────────────────────
   const getEventPos = (e) => {
-  if (e.touches && e.touches.length > 0) {
-    return {
-      clientX: e.touches[0].clientX,
-      clientY: e.touches[0].clientY,
-    };
-  }
-
-  return {
-    clientX: e.clientX,
-    clientY: e.clientY,
+    if (e.touches && e.touches.length > 0) {
+      return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+    }
+    return { clientX: e.clientX, clientY: e.clientY };
   };
-};
 
   const onCropStart = (e) => {
     e.preventDefault();
@@ -114,6 +108,51 @@ export default function EditDocTool() {
   const onCropMouseDown = onCropStart;
   const onCropMouseMove = onCropMove;
   const onCropMouseUp   = onCropEnd;
+
+  const onCropHandleStart = (e, handle) => {
+    e.preventDefault(); e.stopPropagation();
+    // Capture pointer so move events keep firing even outside element
+    if (e.currentTarget.setPointerCapture && e.pointerId != null) {
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_) {}
+    }
+    const { clientX, clientY } = getEventPos(e);
+    setCropResizing({ handle, startX: clientX, startY: clientY, startRect: { ...cropRect } });
+    setIsCropping(false);
+  };
+
+  const onCropHandleMove = (e) => {
+    if (!cropResizing) return;
+    e.preventDefault(); e.stopPropagation();
+    const { clientX, clientY } = getEventPos(e);
+    const imgEl = imgRef.current;
+    const rect = imgEl.getBoundingClientRect();
+    const dx = clientX - cropResizing.startX;
+    const dy = clientY - cropResizing.startY;
+    const r = { ...cropResizing.startRect };
+    const minSize = 20;
+    const h = cropResizing.handle;
+
+    let newX = r.x, newY = r.y, newW = r.w, newH = r.h;
+
+    if (h.includes("w")) { newX = Math.min(r.x + dx, r.x + r.w - minSize); newW = r.w - (newX - r.x); }
+    if (h.includes("e")) { newW = Math.max(minSize, r.w + dx); }
+    if (h.includes("n")) { newY = Math.min(r.y + dy, r.y + r.h - minSize); newH = r.h - (newY - r.y); }
+    if (h.includes("s")) { newH = Math.max(minSize, r.h + dy); }
+
+    newX = Math.max(0, Math.min(newX, rect.width - minSize));
+    newY = Math.max(0, Math.min(newY, rect.height - minSize));
+    newW = Math.min(newW, rect.width - newX);
+    newH = Math.min(newH, rect.height - newY);
+
+    setCropRect({ x: newX, y: newY, w: newW, h: newH });
+  };
+
+  const onCropHandleEnd = (e) => {
+    if (e?.currentTarget?.releasePointerCapture && e.pointerId != null) {
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch(_) {}
+    }
+    setCropResizing(null);
+  };
 
   const applyCrop = () => {
     if (!cropRect || cropRect.w < 10 || cropRect.h < 10) {
@@ -240,16 +279,16 @@ export default function EditDocTool() {
     }
   }, [dragState, resizeState]);
 
-  const onMouseUp = useCallback(() => { setDragState(null); setResizeState(null); setIsCropping(false); }, []);
+  const onMouseUp = useCallback(() => { setDragState(null); setResizeState(null); setIsCropping(false); setCropResizing(null); }, []);
 
   const handleDownload = () => {
     const imgEl = imgRef.current;
     if (!imgEl) return;
 
     // Get actual rendered dimensions using getBoundingClientRect
-    const rect = imgEl.getBoundingClientRect();
-    const rw = rect.width;
-    const rh = rect.height;
+    const bounds = imgEl.getBoundingClientRect();
+    const rw = Math.round(bounds.width);
+    const rh = Math.round(bounds.height);
 
     const pagesHtml = pages.map((_, pi) => {
       const pageUrl = croppedPages[pi] || pages[pi];
@@ -259,18 +298,16 @@ export default function EditDocTool() {
         const el = editorRefs.current[b.id];
         const html = (el ? el.innerHTML : null) || boxHtml.current[b.id] || "";
         const st = boxStyles[b.id] || {};
-        const x  = Math.round((b.xPct / 100) * rw)+6;
+        const x  = Math.round((b.xPct / 100) * rw) + 6;
         const y  = Math.round((b.yPct / 100) * rh);
         const bw = Math.round((b.wPct / 100) * rw);
         const bh = Math.round((b.hPct / 100) * rh);
         return "<div style=\"position:absolute;left:" + x + "px;top:" + y + "px;width:" + bw + "px;height:" + bh + "px;" +
-          "padding-top:20px;padding-left:0px;padding-right:0px;padding-bottom:4px;" +
+          "padding-top:20px;padding-left:6px;padding-right:6px;padding-bottom:4px;" +
           "font-size:" + (st.fontSize||14) + "px;font-family:" + (st.fontFamily||"Arial") + ",sans-serif;" +
           "font-weight:" + (st.bold?"bold":"normal") + ";font-style:" + (st.italic?"italic":"normal") + ";" +
           "text-decoration:" + (st.underline?"underline":"none") + ";text-align:" + (st.align||"left") + ";" +
-          "color:" + (st.color||"#1A1A2E") + ";line-height:1.6;box-sizing:border-box;\">" +
-          html +
-          "</div>";
+          "color:" + (st.color||"#1A1A2E") + ";line-height:1.6;box-sizing:border-box;\">" + html + "</div>";
       }).join("");
 
       return "<div style=\"position:relative;width:" + rw + "px;height:" + rh + "px;page-break-after:always;background:#fff;overflow:hidden;\">" +
@@ -287,13 +324,6 @@ export default function EditDocTool() {
       "</head><body>" + pagesHtml +
       "<scr" + "ipt>window.onload=function(){window.print();}<\/scr" + "ipt></body></html>");
     w.document.close();
-
-    console.log({
-      renderedWidth: imgEl.getBoundingClientRect().width,
-      renderedHeight: imgEl.getBoundingClientRect().height,
-      naturalWidth: imgEl.naturalWidth,
-      naturalHeight: imgEl.naturalHeight,
-    });
   };
 
   const boxes = getBoxes();
@@ -431,63 +461,78 @@ export default function EditDocTool() {
         {/* Canvas */}
         <div
           ref={containerRef}
-          onPointerMove={mode==="crop" ? onCropMove : onEditMouseMove}
-          onPointerUp={onMouseUp}
+          onPointerMove={mode==="crop" ? (cropResizing ? onCropHandleMove : onCropMove) : onEditMouseMove}
+          onPointerUp={cropResizing ? onCropHandleEnd : onMouseUp}
           onPointerCancel={onMouseUp}
           onMouseLeave={onMouseUp}
-          onTouchEnd={onMouseUp}
-          onClick={mode==="edit" ? () => setActive(null) : undefined}
+          onClick={mode==="edit" ? ()=>setActive(null) : undefined}
           style={{
-            touchAction: "none",
-            position: "relative",
-            border: "1px solid #DDE3EE",
+            position:"relative",
+            border:"1px solid #DDE3EE",
             borderTop: mode==="edit" ? "none" : "1px solid #DDE3EE",
             borderRadius: mode==="edit" ? "0 0 8px 8px" : "8px",
-            background: "#fff",
-            overflow: "hidden",
-            marginBottom: "1rem",
+            background:"#fff", overflow:"hidden", marginBottom:"1rem",
             cursor: mode==="crop" ? "crosshair" : "default",
-            userSelect: (dragState || resizeState || isCropping)
-              ? "none"
-              : "auto",
+            touchAction: "none",
+            userSelect:(dragState||resizeState||isCropping)?"none":"auto",
           }}
         >
-          <img
-            ref={imgRef}
+          <img ref={imgRef}
             src={getCurrentImg()}
-            alt={`Page ${currentPage + 1}`}
-            style={{
-              display: "block",
-              width: "100%",
-              height: "auto",
-            }}
+            alt={`Page ${currentPage+1}`}
+            style={{display:"block",width:"100%",height:"auto"}}
             onPointerDown={mode==="crop" ? onCropStart : undefined}
           />
-                    {/* Crop overlay */}
-          {mode==="crop" && cropRect && cropRect.w > 0 && (
-            <>
-              {/* Dark overlay outside crop */}
-              <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.45)",pointerEvents:"none"}}/>
-              {/* Clear crop window */}
-              <div style={{
-                position:"absolute",
-                left:cropRect.x, top:cropRect.y,
-                width:cropRect.w, height:cropRect.h,
-                border:"2px solid #E07B39",
-                boxShadow:"0 0 0 9999px rgba(0,0,0,0.45)",
-                pointerEvents:"none",
-                background:"transparent",
-              }}/>
-              {/* Size label */}
-              <div style={{
-                position:"absolute", left:cropRect.x, top:cropRect.y-22,
-                background:"#E07B39", color:"#fff", fontSize:"0.7rem",
-                padding:"1px 6px", borderRadius:3, pointerEvents:"none",
-              }}>
-                {Math.round(cropRect.w)} × {Math.round(cropRect.h)}
-              </div>
-            </>
-          )}
+
+          {/* Crop overlay */}
+          {mode==="crop" && cropRect && cropRect.w > 0 && (() => {
+            const handles = [
+              { id:"nw", style:{top:-7,left:-7,cursor:"nw-resize"} },
+              { id:"n",  style:{top:-7,left:"50%",transform:"translateX(-50%)",cursor:"n-resize"} },
+              { id:"ne", style:{top:-7,right:-7,cursor:"ne-resize"} },
+              { id:"e",  style:{top:"50%",right:-7,transform:"translateY(-50%)",cursor:"e-resize"} },
+              { id:"se", style:{bottom:-7,right:-7,cursor:"se-resize"} },
+              { id:"s",  style:{bottom:-7,left:"50%",transform:"translateX(-50%)",cursor:"s-resize"} },
+              { id:"sw", style:{bottom:-7,left:-7,cursor:"sw-resize"} },
+              { id:"w",  style:{top:"50%",left:-7,transform:"translateY(-50%)",cursor:"w-resize"} },
+            ];
+            return (
+              <>
+                <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.45)",pointerEvents:"none"}}/>
+                <div style={{
+                  position:"absolute", left:cropRect.x, top:cropRect.y,
+                  width:cropRect.w, height:cropRect.h,
+                  border:"2px solid #E07B39",
+                  boxShadow:"0 0 0 9999px rgba(0,0,0,0.45)",
+                  background:"transparent", zIndex:30,
+                }}>
+                  {handles.map(h => (
+                    <div key={h.id}
+                      onPointerDown={e => onCropHandleStart(e, h.id)}
+                      onPointerMove={e => onCropHandleMove(e)}
+                      onPointerUp={e => onCropHandleEnd(e)}
+                      onPointerCancel={e => onCropHandleEnd(e)}
+                      style={{
+                        position:"absolute", width:24, height:24,
+                        background:"#E07B39", border:"3px solid #fff",
+                        borderRadius:4, zIndex:50, touchAction:"none",
+                        boxShadow:"0 1px 4px rgba(0,0,0,0.3)",
+                        ...h.style,
+                      }}
+                    />
+                  ))}
+                </div>
+                <div style={{
+                  position:"absolute", left:cropRect.x, top: Math.max(0, cropRect.y-26),
+                  background:"#E07B39", color:"#fff", fontSize:"0.7rem",
+                  padding:"2px 8px", borderRadius:4, pointerEvents:"none", zIndex:50,
+                  fontWeight:600,
+                }}>
+                  {Math.round(cropRect.w)} × {Math.round(cropRect.h)}
+                </div>
+              </>
+            );
+          })()}
 
           {/* Text boxes (edit mode) */}
           {mode==="edit" && boxes.map(box => {
@@ -507,7 +552,6 @@ export default function EditDocTool() {
                 {/* Drag handle */}
                 <div
                   onPointerDown={e=>onBoxMouseDown(e,box.id)}
-                  // onTouchStart={e=>onBoxMouseDown(e,box.id)}
                   style={{
                     position:"absolute", top:0, left:0, right:14, height:18,
                     background: activeId===box.id ? "rgba(224,123,57,0.15)" : "rgba(0,0,0,0.04)",
@@ -522,17 +566,16 @@ export default function EditDocTool() {
                 <div data-nd="true"
                   ref={el=>{ editorRefs.current[box.id]=el; }}
                   contentEditable suppressContentEditableWarning
-                     onPointerDown={e=> e.stopPropagation()}
-                    onFocus={()=>setActive(box.id)}
-                    onInput={e=>{ boxHtml.current[box.id]=e.currentTarget.innerHTML; }}
-                    onBlur={e=>{ boxHtml.current[box.id]=e.currentTarget.innerHTML; }}
-                    style={{ width:"100%", Height:20, paddingTop:20, paddingLeft:6, paddingRight:6, paddingBottom:4,
-                      outline:"none", cursor:"text", background:"transparent",
-                      fontSize:st.fontSize||14, fontFamily:st.fontFamily||"Arial",
-                      fontWeight:st.bold?"bold":"normal", fontStyle:st.italic?"italic":"normal",
-                      textDecoration:st.underline?"underline":"none",
-                      textAlign:st.align||"left", color:st.color||"#1A1A2E", lineHeight:1.6 }}/>
-                  {/* Resize handle */}
+                  onFocus={()=>setActive(box.id)}
+                  onInput={e=>{ boxHtml.current[box.id]=e.currentTarget.innerHTML; }}
+                  onBlur={e=>{ boxHtml.current[box.id]=e.currentTarget.innerHTML; }}
+                  style={{ width:"100%", height:"100%", paddingTop:20, paddingLeft:6, paddingRight:6, paddingBottom:4,
+                    outline:"none", cursor:"text", background:"transparent",
+                    fontSize:st.fontSize||14, fontFamily:st.fontFamily||"Arial",
+                    fontWeight:st.bold?"bold":"normal", fontStyle:st.italic?"italic":"normal",
+                    textDecoration:st.underline?"underline":"none",
+                    textAlign:st.align||"left", color:st.color||"#1A1A2E", lineHeight:1.6 }}/>
+                {/* Resize handle */}
                 <div data-nd="true" onPointerDown={e=>onResizeMouseDown(e,box.id)}
                   style={{position:"absolute",bottom:0,right:0,width:14,height:14,
                     background:"#E07B39",borderRadius:"3px 0 3px 0",cursor:"se-resize",zIndex:20}}/>
