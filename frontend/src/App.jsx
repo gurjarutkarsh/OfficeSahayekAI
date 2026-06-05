@@ -4,7 +4,7 @@ import axios from "axios";
 import "./App.css";
 import RecentDocs from "./tools/Recentdocs.jsx";
 
-import { API } from "/home/utkarsh/MS-INDRAVIR/frontend/src/config.jsx";
+import { API } from "./config.jsx";
 // ── Error message helper ──────────────────────────────
 const getErrorMessage = (err, context = "") => {
   const status = err?.response?.status;
