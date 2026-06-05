@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 
-import { API } from "../config";
+import { API } from "../config.jsx";
 export default function RecentDocs({ onSelect }) {
   const [docs, setDocs] = useState([]);
   const [open, setOpen] = useState(false);

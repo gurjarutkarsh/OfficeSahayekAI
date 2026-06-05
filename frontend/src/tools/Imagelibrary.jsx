@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 
-import { API } from "../config";
+import { API } from "../config.jsx";
 export default function ImageLibrary({ type, onSelect, label }) {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);

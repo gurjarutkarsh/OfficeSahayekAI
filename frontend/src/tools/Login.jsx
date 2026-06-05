@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
-import { API } from "../config";
+import { API } from "../config.jsx";
 
 console.log("API URL =", import.meta.env.VITE_API_URL);
 console.log("Register URL =", `${API}/auth/register`);

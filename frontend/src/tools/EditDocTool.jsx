@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import axios from "axios";
 import ImageLibrary from "./Imagelibrary.jsx";
-import { API } from "../config";
+import { API } from "../config.jsx";
 const FONT_SIZES = [8,10,11,12,13,14,16,18,20,22,24,28,32,36];
 const FONTS = ["Arial","Times New Roman","Georgia","Courier New","Verdana"];
 

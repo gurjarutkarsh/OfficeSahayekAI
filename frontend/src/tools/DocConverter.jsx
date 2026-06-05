@@ -1,6 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
-import { API } from "../config";
+import { API } from "../config.jsx";
 
 const TABS = [
   { id: "img2pdf",  label: "Image → PDF",  emoji: "🖼️" },
