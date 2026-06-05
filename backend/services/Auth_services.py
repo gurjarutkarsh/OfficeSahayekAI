@@ -55,6 +55,7 @@ def decode_token(token: str) -> Optional[dict]:
 def create_user(email: str, name: str, password: str):
     db = SessionLocal()
     try:
+        email = email.strip().lower()
         if db.query(User).filter(User.email == email).first():
             return None, "Email already registered"
         user = User(email=email, name=name, password=hash_password(password))
@@ -68,6 +69,7 @@ def create_user(email: str, name: str, password: str):
 def get_user_by_email(email: str):
     db = SessionLocal()
     try:
+        email = email.strip().lower()
         return db.query(User).filter(User.email == email).first()
     finally:
         db.close()
@@ -80,6 +82,7 @@ def get_user_by_id(user_id: int):
         db.close()
 
 def authenticate_user(email: str, password: str):
+    email = email.strip().lower()
     user = get_user_by_email(email)
     if not user or not verify_password(password, user.password):
         return None
