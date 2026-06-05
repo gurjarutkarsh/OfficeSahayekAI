@@ -4,8 +4,7 @@ import axios from "axios";
 import "./App.css";
 import RecentDocs from "./tools/Recentdocs.jsx";
 
-const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
-
+import { API } from "../config";
 // ── Error message helper ──────────────────────────────
 const getErrorMessage = (err, context = "") => {
   const status = err?.response?.status;

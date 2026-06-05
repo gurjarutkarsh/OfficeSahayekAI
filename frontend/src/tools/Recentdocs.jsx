@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 
-const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
-
+import { API } from "../config";
 export default function RecentDocs({ onSelect }) {
   const [docs, setDocs] = useState([]);
   const [open, setOpen] = useState(false);

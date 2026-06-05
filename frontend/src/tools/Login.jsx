@@ -2,8 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
-const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
-
+import { API } from "../config";
 export default function Login({ onLogin }) {
   const [mode, setMode] = useState("login"); // "login" | "register"
   const [form, setForm] = useState({ email: "", name: "", password: "" });
