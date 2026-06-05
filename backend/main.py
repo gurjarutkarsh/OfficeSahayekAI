@@ -30,6 +30,7 @@ app.add_middleware(
 )
 
 UPLOAD_FOLDER = "uploads"
+BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 security = HTTPBearer(auto_error=False)
@@ -194,7 +195,8 @@ async def pdf_to_images(file: UploadFile = File(...), current_user=Depends(get_c
             img_filename = f"{file_id}_page_{page.number}.png"
             img_path = os.path.join(UPLOAD_FOLDER, img_filename)
             pix.save(img_path)
-            image_urls.append(f"http://127.0.0.1:8000/page-image/{img_filename}")
+            image_urls.append(f"{BASE_URL}/page-image/{img_filename}")
+            BASE_URL = os.getenv("BASE_URL", "https://officesahayekai.onrender.com").rstrip("/")
         doc.close()
         return {"pages": image_urls, "total": len(image_urls)}
     except Exception as e:
