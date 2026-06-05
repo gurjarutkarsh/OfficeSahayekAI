@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
 import { API } from "../config";
+
+console.log("API URL =", import.meta.env.VITE_API_URL);
+console.log("Register URL =", `${API}/auth/register`);
 export default function Login({ onLogin }) {
   const [mode, setMode] = useState("login"); // "login" | "register"
   const [form, setForm] = useState({ email: "", name: "", password: "" });
@@ -135,3 +138,4 @@ export default function Login({ onLogin }) {
     </div>
   );
 }
+
